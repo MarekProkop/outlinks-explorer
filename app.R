@@ -1,22 +1,21 @@
 library(shiny)
+library(bslib)
 library(rvest)
 library(httr2)
 library(dplyr)
 library(stringr)
 
-ui <- fluidPage(
-  titlePanel("Internal Link Explorer"),
-  sidebarLayout(
-    sidebarPanel(
-      textInput("url", "URL of the page to explore", value = "https://www.hotely.cz/ceska-lipa"),
-      textInput("css_selector", "Optional CSS Selector to limit links from", value = ""),
-      actionButton("explore", "Explore Links"),
-      actionButton("back", "Back")
-    ),
-    mainPanel(
-      uiOutput("links")
-    )
-  )
+ui <- page_sidebar(
+  title = "Outlinks Explorer",
+  sidebar = sidebar(
+    width = 250,
+    textInput("url", "URL of the page to explore", value = ""),
+    textInput("css_selector", "Optional CSS Selector to limit links from", value = ""),
+    actionButton("explore", "Explore Links"),
+    actionButton("back", "Back")
+  ),
+  uiOutput("exploredUrl"),
+  uiOutput("links")
 )
 
 server <- function(input, output, session) {
@@ -26,10 +25,7 @@ server <- function(input, output, session) {
   # Event to explore links using the URL from the input field
   explore_links <- function(url) {
     req(url)
-
-    # Save the current URL to the stack before exploring
-    url_stack(c(url_stack(), url))
-
+    
     # Fetch the page
     page <- tryCatch(
       {
@@ -86,6 +82,10 @@ server <- function(input, output, session) {
       return()
     }
 
+    output$exploredUrl <- renderUI({
+      HTML(paste("<p>Exploring:", url, "</p>"))
+    })
+    
     output$links <- renderUI({
       tagList(
         tags$ol(
@@ -107,12 +107,17 @@ server <- function(input, output, session) {
 
   observeEvent(input$explore, {
     explore_links(input$url)
+    
+    # Save the URL to the stack before exploring
+    url_stack(c(url_stack(), input$url))
   })
 
   # Observe link clicks and update the URL input, then trigger exploration
   observeEvent(input$clicked_link, {
     updateTextInput(session, "url", value = input$clicked_link)
     explore_links(input$clicked_link)
+    # Save the URL to the stack before exploring
+    url_stack(c(url_stack(), input$clicked_link))
   })
 
   # Back button event to go to the previous URL
