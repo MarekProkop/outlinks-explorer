@@ -5,17 +5,156 @@ library(httr2)
 library(dplyr)
 library(stringr)
 
-ui <- page_sidebar(
+ui <- fluidPage(
   title = "Outlinks Explorer",
-  sidebar = sidebar(
-    width = 250,
-    textInput("url", "URL of the page to explore", value = ""),
-    textInput("css_selector", "Optional CSS Selector to limit links from", value = ""),
-    actionButton("explore", "Explore Links"),
-    actionButton("back", "Back")
+  tags$head(
+    tags$style(HTML("
+        /* Fixed navigation bar */
+        .nav-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+
+        /* Container for all content below nav */
+        .content-container {
+            margin-top: 140px;  /* Adjust based on nav height */
+            padding: 0 20px;
+        }
+
+        /* URL input and buttons styling */
+        .url-controls {
+            display: flex;
+            gap: 10px;
+            align-items: start;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 10px 0;
+        }
+
+        .url-input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* Override Shiny's default form-group width limitation */
+        .url-input .form-group {
+            width: 100%;
+            max-width: none;
+        }
+
+        .url-input .form-control {
+            width: 100%;
+        }
+
+        /* Links list styling */
+        .link-list {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 10px 0;
+        }
+
+        .link-list h4 {
+            margin: 0 0 15px 0;
+        }
+
+        .link-item {
+            margin: 2px 0;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+        }
+
+        .link-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .link-icon {
+            cursor: pointer;
+            color: #007bff;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+
+        .link-icon:hover {
+            color: #0056b3;
+        }
+
+        .link-item a {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .error-message {
+            color: red;
+            margin-top: 10px;
+        }
+
+        /* Title styling */
+        .app-title {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+        }
+
+        /* Debug info styling */
+        .debug-info {
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+
+    ")),
+    tags$link(
+      rel = "stylesheet",
+      href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
+    )
   ),
-  uiOutput("exploredUrl"),
-  uiOutput("links")
+
+  # Fixed navigation bar
+  div(
+    class = "nav-container",
+    h1(class = "app-title h2", "Outlinks Explorer"),
+    div(
+      class = "url-controls",
+      div(
+        class = "url-input",
+        div(
+          textInput("url",
+            label = NULL,
+            placeholder = "Enter URL of the page to explore..."
+          )
+        )
+      ),
+      actionButton("explore",
+        HTML('<i class="fas fa-search"></i> Explore Links'),
+        class = "btn btn-primary"
+      ),
+      actionButton("back",
+        HTML('<i class="fas fa-arrow-left"></i> Back'),
+        class = "btn btn-secondary"
+      )
+    )
+  ),
+  div(
+    textInput("css_selector", "Optional CSS Selector to limit links from", value = "")
+  ),
+
+  # Scrollable content
+  div(
+    class = "content-container",
+    div(
+      class = "debug-info",
+      verbatimTextOutput("debugInfo")
+    ),
+    uiOutput("links")
+  )
 )
 
 server <- function(input, output, session) {
@@ -25,7 +164,7 @@ server <- function(input, output, session) {
   # Event to explore links using the URL from the input field
   explore_links <- function(url) {
     req(url)
-    
+
     # Fetch the page
     page <- tryCatch(
       {
@@ -85,7 +224,7 @@ server <- function(input, output, session) {
     output$exploredUrl <- renderUI({
       HTML(paste("<p>Exploring:", url, "</p>"))
     })
-    
+
     output$links <- renderUI({
       tagList(
         tags$ol(
@@ -107,7 +246,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$explore, {
     explore_links(input$url)
-    
+
     # Save the URL to the stack before exploring
     url_stack(c(url_stack(), input$url))
   })
