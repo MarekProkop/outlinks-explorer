@@ -5,6 +5,40 @@ library(httr2)
 library(dplyr)
 library(stringr)
 
+# --- Helper Functions ---
+
+fetch_page <- function(url) {
+  tryCatch({
+    req_obj <- request(url)
+    resp <- req_perform(req_obj)
+    if (resp_status(resp) >= 400) {
+      stop("Error: Unable to fetch the URL. HTTP status code: ", resp_status(resp))
+    }
+    read_html(resp_body_string(resp))
+  }, error = function(e) {
+    NULL
+  })
+}
+
+extract_links <- function(page, base_url, css_selector) {
+  tryCatch({
+    page %>%
+      html_elements(css_selector) %>%
+      html_attr("href") %>%
+      url_absolute(base_url) %>%
+      unique()
+  }, error = function(e) {
+    NULL
+  })
+}
+
+filter_internal_links <- function(links, base_url) {
+  domain <- sub("^.+://([^/]+).*$", "\\1", base_url)
+  links[str_detect(links, fixed(domain))]
+}
+
+# --- UI ---
+
 ui <- fluidPage(
   title = "Outlinks Explorer",
   tags$head(
@@ -20,88 +54,83 @@ ui <- fluidPage(
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             z-index: 1000;
         }
-
         /* Container for all content below nav */
         .content-container {
-            margin-top: 140px;  /* Adjust based on nav height */
+            margin-top: 140px;
             padding: 0 20px;
         }
-
-        /* URL input and buttons styling */
+        /* URL and CSS input styling in nav */
         .url-controls {
             display: flex;
             gap: 10px;
-            align-items: start;
-            max-width: 1200px;
             margin: 0 auto;
             padding: 10px 0;
         }
-
+        /* Remove extra bottom margin from Shiny input containers */
+        .url-controls .shiny-input-container {
+            margin-bottom: 0;
+            padding: 0;
+            width: auto;
+        }
+        /* Enforce a 2:1 width ratio */
         .url-input {
+            flex: 2;
+        }
+        .css-selector-input {
             flex: 1;
-            min-width: 0;
         }
-
-        /* Override Shiny's default form-group width limitation */
-        .url-input .form-group {
-            width: 100%;
-            max-width: none;
-        }
-
-        .url-input .form-control {
+        /* Force consistent height and full width for inputs */
+        .url-controls .form-control {
+            height: 38px;
+            padding: 6px 12px;
             width: 100%;
         }
-
+        /* Adjust buttons so they align with the inputs */
+        .url-controls .btn {
+            align-self: flex-end;
+            margin-top: 0;
+        }
         /* Links list styling */
         .link-list {
             max-width: 1200px;
             margin: 0 auto;
             padding: 10px 0;
         }
-
         .link-list h4 {
             margin: 0 0 15px 0;
         }
-
         .link-item {
             margin: 2px 0;
             padding: 4px 8px;
             display: flex;
             align-items: center;
         }
-
         .link-item:hover {
             background-color: #f8f9fa;
         }
-
         .link-icon {
             cursor: pointer;
             color: #007bff;
             margin-right: 10px;
             flex-shrink: 0;
         }
-
         .link-icon:hover {
             color: #0056b3;
         }
-
         .link-item a {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-
         .error-message {
             color: red;
             margin-top: 10px;
         }
-
         /* Title styling */
         .app-title {
             margin: 0 0 15px 0;
             color: #2c3e50;
         }
-
         /* Debug info styling */
         .debug-info {
             padding: 10px;
@@ -109,14 +138,13 @@ ui <- fluidPage(
             background-color: #f8f9fa;
             border-radius: 4px;
         }
-
     ")),
     tags$link(
       rel = "stylesheet",
       href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
     )
   ),
-
+  
   # Fixed navigation bar
   div(
     class = "nav-container",
@@ -125,12 +153,11 @@ ui <- fluidPage(
       class = "url-controls",
       div(
         class = "url-input",
-        div(
-          textInput("url",
-            label = NULL,
-            placeholder = "Enter URL of the page to explore..."
-          )
-        )
+        textInput("url", label = "URL of the page to explore")
+      ),
+      div(
+        class = "css-selector-input",
+        textInput("css_selector", "CSS Selector", value = "")
       ),
       actionButton("explore",
         HTML('<i class="fas fa-search"></i> Explore Links'),
@@ -142,11 +169,8 @@ ui <- fluidPage(
       )
     )
   ),
-  div(
-    textInput("css_selector", "Optional CSS Selector to limit links from", value = "")
-  ),
-
-  # Scrollable content
+  
+  # Scrollable content below nav bar
   div(
     class = "content-container",
     div(
@@ -157,74 +181,48 @@ ui <- fluidPage(
   )
 )
 
-server <- function(input, output, session) {
-  # LIFO stack to store URL history
-  url_stack <- reactiveVal(character(0))
+# --- Server ---
 
-  # Event to explore links using the URL from the input field
+server <- function(input, output, session) {
+  url_stack <- reactiveVal(character(0))
+  
   explore_links <- function(url) {
     req(url)
-
-    # Fetch the page
-    page <- tryCatch(
-      {
-        req <- request(url)
-        resp <- req_perform(req)
-        if (resp_status(resp) >= 400) {
-          stop("Error: Unable to fetch the URL. HTTP status code: ", resp_status(resp))
-        }
-        read_html(resp_body_string(resp))
-      },
-      error = function(e) {
-        return(NULL)
-      }
-    )
-
+    
+    page <- fetch_page(url)
     if (is.null(page)) {
       output$links <- renderUI({
-        HTML("<p>Unable to fetch the URL</p>")
+        HTML("<p class='error-message'>Unable to fetch the URL</p>")
       })
       return()
     }
-
-    # Extract links based on the CSS selector (if provided)
-    css_selector <- paste(input$css_selector, "a") |> trimws()
-    links <- tryCatch(
-      {
-        page |>
-          html_elements(css_selector) |>
-          html_attr("href") |>
-          url_absolute(url) |>
-          unique()
-      },
-      error = function(e) {
-        return(NULL)
-      }
-    )
-
+    
+    css_selector <- if (nzchar(trimws(input$css_selector))) {
+      paste(trimws(input$css_selector), "a")
+    } else {
+      "a"
+    }
+    
+    links <- extract_links(page, url, css_selector)
     if (is.null(links)) {
       output$links <- renderUI({
         HTML("<p>No links found on the page.</p>")
       })
       return()
     }
-
-    # filter internal links
-    domain <- str_extract(url, ".+://([^/]+)", group = 1)
-    links_filtered <- links[str_detect(links, domain)]
-
-    # Return the links as a numbered list of clickable links
+    
+    links_filtered <- filter_internal_links(links, url)
     if (length(links_filtered) == 0) {
       output$links <- renderUI({
         HTML("<p>No internal links found.</p>")
       })
       return()
     }
-
+    
     output$exploredUrl <- renderUI({
       HTML(paste("<p>Exploring:", url, "</p>"))
     })
-
+    
     output$links <- renderUI({
       tagList(
         tags$ol(
@@ -233,9 +231,7 @@ server <- function(input, output, session) {
               actionLink(
                 inputId = paste0("link_", i),
                 label = links_filtered[i],
-                onclick = sprintf(
-                  "Shiny.setInputValue('clicked_link', '%s');", links_filtered[i]
-                )
+                onclick = sprintf("Shiny.setInputValue('clicked_link', '%s');", links_filtered[i])
               )
             )
           })
@@ -243,34 +239,24 @@ server <- function(input, output, session) {
       )
     })
   }
-
+  
   observeEvent(input$explore, {
     explore_links(input$url)
-
-    # Save the URL to the stack before exploring
     url_stack(c(url_stack(), input$url))
   })
-
-  # Observe link clicks and update the URL input, then trigger exploration
+  
   observeEvent(input$clicked_link, {
     updateTextInput(session, "url", value = input$clicked_link)
     explore_links(input$clicked_link)
-    # Save the URL to the stack before exploring
     url_stack(c(url_stack(), input$clicked_link))
   })
-
-  # Back button event to go to the previous URL
+  
   observeEvent(input$back, {
     stack <- url_stack()
     if (length(stack) > 1) {
-      # Remove the current URL from the stack
       stack <- stack[-length(stack)]
-
-      # Get the previous URL
       previous_url <- tail(stack, 1)
-      # Update the stack
       url_stack(stack)
-      # Update the URL input and explore the previous URL
       updateTextInput(session, "url", value = previous_url)
       explore_links(previous_url)
     }
