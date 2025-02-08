@@ -41,11 +41,15 @@ To run the app locally, follow these steps:
 5. Use the **Back** button to return to the previous page.
 
 
-
 ## Requirements
 
 - R (version 4.0 or higher)
 - The following R packages: `shiny`, `rvest`, `httr2`, `dplyr`, `purrr`
+
+
+## Live demo
+
+You can [try out the app at Shinyapps.io](https://prokop.shinyapps.io/outlinks-explorer/). For real work, however, you should install it locally. Due to hosting performance limitations, the demo may not always work properly.
 
 ## License
 
