@@ -1,0 +1,12 @@
+name: outlinks-explorer
+title: outlinks-explorer
+username: prokop
+account: prokop
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 13943309
+bundleId: 9768309
+url: https://prokop.shinyapps.io/outlinks-explorer/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
