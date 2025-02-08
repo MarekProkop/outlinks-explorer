@@ -49,7 +49,11 @@ To run the app locally, follow these steps:
 
 ## Live demo
 
+<<<<<<< HEAD
 You can [try out the app at Shinyapps.io](https://prokop.shinyapps.io/outlinks-explorer/). For real work, however, you should install it locally. Due to hosting performance limitations, the demo may not always work properly.
+=======
+You can [try out the app at Shinyapps](https://prokop.shinyapps.io/outlinks-explorer/).io. For real work, however, you should install it locally. Due to hosting performance limitations, the demo may not always work properly.
+>>>>>>> b04789bde15084582acd268f9c4ac3344b8f0f8a
 
 ## License
 
