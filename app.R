@@ -261,6 +261,11 @@ server <- function(input, output, session) {
       explore_links(previous_url)
     }
   })
+  
+  session$onSessionEnded(function() {
+    stopApp()
+  })
+
 }
 
 shinyApp(ui = ui, server = server)
